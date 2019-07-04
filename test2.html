@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <title>Processing!</title>
+  </head>
+  <body>
+    <script src="processing.js"></script>
+    <script id="processing" type="text/processing" data-processing-target="mycanvas">
+      void setup()
+      {
+        size(200,300);
+        background(125);
+        fill(255, 0, 0);
+        noLoop();
+      }
+      
+      float x = 50;
+      float y = 50;
+
+      void draw(){  
+        background(125);
+        ellipse(x, y, 50, 50);
+        //x = x + 1;
+        }
+    </script>
+
+    <script>
+      function run_pro() {
+        //debugger;
+        canvas = document.getElementById("mycanvas");
+        source = `void setup()
+        {
+          size(600,200);
+          background(125);
+          fill(255, 0, 0);
+        }
+
+		void someFunc() {
+			// do something here
+		}
+
+        float x = 50;
+        float y = 50;
+        void draw(){
+          background(125);
+          ellipse(x, y, 50, 50);
+          x = x + 1;
+        }`
+
+        code = document.getElementById("processing");
+        code.text = source;
+        //instance = new Processing(canvas, source);
+        Processing.reload();
+      }
+    </script>
+
+    <canvas id="mycanvas"></canvas>
+    <br>
+    <hr>
+    <button type="button" id="ClickMe" onclick="run_pro()">ClickMe</button>
+
+
+  </body>
+</html>
