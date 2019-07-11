@@ -119,16 +119,14 @@ module.exports = function parseProcessing(code, options) {
 	
 	var methodsRegex = /\b((?:(?:public|private|final|protected|static|abstract|synchronized)\s+)*)((?!(?:else|new|return|throw|function|public|private|protected)\b)[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*"C\d+")*)\s*([A-Za-z_$][\w$]*\b)\s*("B\d+")(\s*throws\s+[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*,\s*[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*)*)?\s*("A\d+"|;)/g;
 	var fieldTest = /^((?:(?:public|private|final|protected|static)\s+)*)((?!(?:else|new|return|throw)\b)[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*"C\d+")*)\s*([A-Za-z_$][\w$]*\b)\s*(?:"C\d+"\s*)*([=,]|$)/;
+	// wk_added for struct
+	var structTest = /^((?:(?:public|private|final|protected|static)\s+)*)((?!(?:else|new|return|throw)\b)(?:struct)\s+[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*"C\d+")*)\s*([A-Za-z_$][\w$]*\b)\s*(?:"C\d+"\s*)*([=,]|$)/;
 	var cstrsRegex = /\b((?:(?:public|private|final|protected|static|abstract)\s+)*)((?!(?:new|return|throw)\b)[A-Za-z_$][\w$]*\b)\s*("B\d+")(\s*throws\s+[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*,\s*[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*)*)?\s*("A\d+")/g;
 
 	/* 属性： 
-	 * 1. accessor:		((?:(?:public|private|final|protected|static)\s+)*)
-	 * 2. 
-	((?!(?:new|return|throw)\b)[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*"C\d+")*)\s*
-	 *
-	 *
+	 * 1. attr:		((?:(?:public|private|final|protected|static)\s+)*)
+	 * 2. type:		((?!(?:new|return|throw)\b)[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*"C\d+")*)\s*
 	 * */
-
 	var attrAndTypeRegex = /^((?:(?:public|private|final|protected|static)\s+)*)((?!(?:new|return|throw)\b)[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*"C\d+")*)\s*/;
 	var functionsRegex = /\bfunction(?:\s+([A-Za-z_$][\w$]*))?\s*("B\d+")\s*("A\d+")/g;
 
@@ -551,15 +549,23 @@ module.exports = function parseProcessing(code, options) {
 	};
 
 	function transformStatement(statement) {
-		if(fieldTest.test(statement)) {
+		if (fieldTest.test(statement)) {
 			var attrAndType = attrAndTypeRegex.exec(statement);
+			// wk_debug
+			console.log('debug(attrAndType):', attrAndType);
+
 			var definitions = statement.substring(attrAndType[0].length).split(",");
 			var defaultTypeValue = getDefaultValueForType(attrAndType[2]);
 			for(var i=0; i < definitions.length; ++i) {
 				definitions[i] = transformVarDefinition(definitions[i], defaultTypeValue);
 			}
 			return new AstVar(definitions, attrAndType[2]);
+		} else if (structTest.test(statement)) {
+			statement = trim(statement.replace('struct', ''));
+			// wk_debug
+			console.log('debug(struct statement):', "'" + statement + "'");
 		}
+
 		return new AstStatement(transformExpression(statement));
 	}
 
@@ -1130,11 +1136,17 @@ module.exports = function parseProcessing(code, options) {
 		}
 	}
 
-	function AstStructBody.prototype.toString() {
-		let result = "";
+	AstStructBody.prototype.toString = function() {
+		let result = '\tconstructor() {\n';
 		for (field of this.fields) {
-			result += field.definitions.join(";\n");
+			// wk_debug
+			console.log('debug(field):', field);
+			console.log('debug(field.definitions):', field.definitions.toString());
+			
+			result += '\t\tthis.' + field.definitions.join(';\n\t\tthis.');
+			result += ';'
 		}
+		result += '\n\t}';
 		result += trim(this.misc.tail);
 
 		return result;
@@ -1212,11 +1224,14 @@ module.exports = function parseProcessing(code, options) {
 	}
 
 	AstStruct.prototype.toString = function() {
-		return "var " + this.name + " = " + this.body + ";\n" +
+		return "class " + this.name + " {\n" + this.body + "\n};\n" +
 			"$p." + this.name + " = " + this.name + ";\n";
 	};
 
 	function transformGlobalStruct(struct_) {
+		// wk_debug
+		console.log('debug(struct_):', struct_);
+
 		var m = structsRegex.exec(struct_); // 1 - attr, 2 - struct, 3 - name, 4 - body 
 		structsRegex.lastIndex = 0;
 		var body = atoms[getAtomIndex(m[4])];
