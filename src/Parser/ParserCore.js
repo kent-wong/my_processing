@@ -30,55 +30,6 @@ module.exports = function parseProcessing(code, options) {
 	console.log('debug(options):', options);
 	console.log('debug(code):', code);
 
-
-	// replaces strings and regexs keyed by index with an array of strings
-	function injectStrings(code, strings) {
-		return code.replace(/'(\d+)'/g, function(all, index) {
-			var val = strings[index];
-			if(val.charAt(0) === "/") {
-				return val;
-			}
-			return (/^'((?:[^'\\\n])|(?:\\.[0-9A-Fa-f]*))'$/).test(val) ? "(new $p.Character(" + val + "))" : val;
-		});
-	}
-
-	// trims off leading and trailing spaces
-	// returns an object. object.left, object.middle, object.right, object.untrim
-	function trimSpaces(string) {
-		var m1 = /^\s*/.exec(string), result;
-		if(m1[0].length === string.length) {
-			result = {left: m1[0], middle: "", right: ""};
-		} else {
-			var m2 = /\s*$/.exec(string);
-			result = {left: m1[0], middle: string.substring(m1[0].length, m2.index), right: m2[0]};
-		}
-		result.untrim = function(t) { return this.left + t + this.right; };
-		return result;
-	}
-
-	// simple trim of leading and trailing spaces
-	function trim(string) {
-		return string.replace(/^\s+/,'').replace(/\s+$/,'');
-	}
-
-	function appendToLookupTable(table, array) {
-		for(var i=0,l=array.length;i<l;++i) {
-			table[array[i]] = null;
-		}
-		return table;
-	}
-
-	function isLookupTableEmpty(table) {
-		for(var i in table) {
-			if(table.hasOwnProperty(i)) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	function getAtomIndex(templ) { return templ.substring(2, templ.length - 1); }
-
 	// remove carriage returns "\r"
 	var codeWoExtraCr = code.replace(/\r\n?|\n\r/g, "\n");
 
@@ -131,7 +82,7 @@ module.exports = function parseProcessing(code, options) {
 		codeWoGenerics = codeWoGenerics.replace(/([<]?)<\s*((?:\?|[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*)(?:\[\])*(?:\s+(?:extends|super)\s+[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*)?(?:\s*,\s*(?:\?|[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*)(?:\[\])*(?:\s+(?:extends|super)\s+[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*)?)*)\s*>([=]?)/g, replaceFunc);
 	} while (genericsWereRemoved);
 
-	var atoms = splitToAtoms(codeWoGenerics);
+	const atoms = splitToAtoms(codeWoGenerics);
 	var replaceContext;
 	var declaredClasses = {}, currentClassId, classIdSeed = 0;
 
@@ -158,6 +109,15 @@ module.exports = function parseProcessing(code, options) {
 	var methodsRegex = /\b((?:(?:public|private|final|protected|static|abstract|synchronized)\s+)*)((?!(?:else|new|return|throw|function|public|private|protected)\b)[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*"C\d+")*)\s*([A-Za-z_$][\w$]*\b)\s*("B\d+")(\s*throws\s+[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*,\s*[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*)*)?\s*("A\d+"|;)/g;
 	var fieldTest = /^((?:(?:public|private|final|protected|static)\s+)*)((?!(?:else|new|return|throw)\b)[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*"C\d+")*)\s*([A-Za-z_$][\w$]*\b)\s*(?:"C\d+"\s*)*([=,]|$)/;
 	var cstrsRegex = /\b((?:(?:public|private|final|protected|static|abstract)\s+)*)((?!(?:new|return|throw)\b)[A-Za-z_$][\w$]*\b)\s*("B\d+")(\s*throws\s+[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*,\s*[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*)*)?\s*("A\d+")/g;
+
+	/* 属性： 
+	 * 1. accessor:		((?:(?:public|private|final|protected|static)\s+)*)
+	 * 2. 
+	((?!(?:new|return|throw)\b)[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*"C\d+")*)\s*
+	 *
+	 *
+	 * */
+
 	var attrAndTypeRegex = /^((?:(?:public|private|final|protected|static)\s+)*)((?!(?:new|return|throw)\b)[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*"C\d+")*)\s*/;
 	var functionsRegex = /\bfunction(?:\s+([A-Za-z_$][\w$]*))?\s*("B\d+")\s*("A\d+")/g;
 
@@ -1623,6 +1583,8 @@ function getGlobalMembers(aFunctions) {
 	for (i = 0, l = names.length; i < l ; ++i) {
 		members[names[i]] = null;
 	}
+
+	/* 使用Processing的地方暂时注释掉
 	for (var lib in Processing.lib) {
 		if (Processing.lib.hasOwnProperty(lib)) {
 			if (Processing.lib[lib].exports) {
@@ -1633,6 +1595,8 @@ function getGlobalMembers(aFunctions) {
 			}
 		}
 	}
+	*/
+
 	return members;
 }
 
@@ -1664,4 +1628,54 @@ function splitToAtoms(code) {
 
 	atoms.unshift(result);
 	return atoms;
+}
+
+// replaces strings and regexs keyed by index with an array of strings
+function injectStrings(code, strings) {
+	return code.replace(/'(\d+)'/g, function(all, index) {
+		var val = strings[index];
+		if(val.charAt(0) === "/") {
+			return val;
+		}
+		return (/^'((?:[^'\\\n])|(?:\\.[0-9A-Fa-f]*))'$/).test(val) ? "(new $p.Character(" + val + "))" : val;
+	});
+}
+
+// trims off leading and trailing spaces
+// returns an object. object.left, object.middle, object.right, object.untrim
+function trimSpaces(string) {
+	var m1 = /^\s*/.exec(string), result;
+	if(m1[0].length === string.length) {
+		result = {left: m1[0], middle: "", right: ""};
+	} else {
+		var m2 = /\s*$/.exec(string);
+		result = {left: m1[0], middle: string.substring(m1[0].length, m2.index), right: m2[0]};
+	}
+	result.untrim = function(t) { return this.left + t + this.right; };
+	return result;
+}
+
+// simple trim of leading and trailing spaces
+function trim(string) {
+	return string.replace(/^\s+/,'').replace(/\s+$/,'');
+}
+
+function appendToLookupTable(table, array) {
+	for(var i=0,l=array.length;i<l;++i) {
+		table[array[i]] = null;
+	}
+	return table;
+}
+
+function isLookupTableEmpty(table) {
+	for(var i in table) {
+		if(table.hasOwnProperty(i)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+function getAtomIndex(templ) {
+	return templ.substring(2, templ.length - 1);
 }
