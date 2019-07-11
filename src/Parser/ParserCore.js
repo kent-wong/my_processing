@@ -26,9 +26,9 @@ module.exports = function parseProcessing(code, options) {
 	const globalMembers = getGlobalMembers(options.aFunctions);
 
 	// wk_debug
-	console.log('debug(globalMembers):', globalMembers);
-	console.log('debug(options):', options);
-	console.log('debug(code):', code);
+	//console.log('debug(globalMembers):', globalMembers);
+	//console.log('debug(options):', options);
+	//console.log('debug(code):', code);
 
 	// remove carriage returns "\r"
 	var codeWoExtraCr = code.replace(/\r\n?|\n\r/g, "\n");
@@ -105,7 +105,18 @@ module.exports = function parseProcessing(code, options) {
 	// functions defined below
 	var transformClassBody, transformInterfaceBody, transformStatementsBlock, transformStatements, transformMain, transformExpression;
 
+	/* 类声明： 
+	 * 1. attr:			\b((?:(?:public|private|final|protected|static|abstract)\s+)*)
+	 * 2. class|int:	(class|interface)\s+
+	 * 3. name:			([A-Za-z_$][\w$]*\b)
+	 * 4. extends:		(\s+extends\s+[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*,\s*[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*\b)*)?
+	 * 5. implements:	(\s+implements\s+[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*,\s*[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*\b)*)?\s*
+	 * 6. class body:	("A\d+")
+	 * */
 	var classesRegex = /\b((?:(?:public|private|final|protected|static|abstract)\s+)*)(class|interface)\s+([A-Za-z_$][\w$]*\b)(\s+extends\s+[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*,\s*[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*\b)*)?(\s+implements\s+[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*,\s*[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*\b)*)?\s*("A\d+")/g;
+
+	var structsRegex = /\b((?:(?:public|private|final|protected|static|abstract)\s+)*)(struct)\s+([A-Za-z_$][\w$]*\b)\s*("A\d+")/g;
+	
 	var methodsRegex = /\b((?:(?:public|private|final|protected|static|abstract|synchronized)\s+)*)((?!(?:else|new|return|throw|function|public|private|protected)\b)[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*"C\d+")*)\s*([A-Za-z_$][\w$]*\b)\s*("B\d+")(\s*throws\s+[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*,\s*[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*)*)?\s*("A\d+"|;)/g;
 	var fieldTest = /^((?:(?:public|private|final|protected|static)\s+)*)((?!(?:else|new|return|throw)\b)[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*"C\d+")*)\s*([A-Za-z_$][\w$]*\b)\s*(?:"C\d+"\s*)*([=,]|$)/;
 	var cstrsRegex = /\b((?:(?:public|private|final|protected|static|abstract)\s+)*)((?!(?:new|return|throw)\b)[A-Za-z_$][\w$]*\b)\s*("B\d+")(\s*throws\s+[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*(?:\s*,\s*[A-Za-z_$][\w$]*\b(?:\s*\.\s*[A-Za-z_$][\w$]*\b)*)*)?\s*("A\d+")/g;
@@ -123,10 +134,15 @@ module.exports = function parseProcessing(code, options) {
 
 	// This converts classes, methods and functions into atoms, and adds them to the atoms array.
 	// classes = E, methods = D and functions = H
+	// wk_added: structs = S
 	function extractClassesAndMethods(code) {
 		var s = code;
 		s = s.replace(classesRegex, function(all) {
 			return addAtom(all, 'E');
+		});
+		// wk_added
+		s = s.replace(structsRegex, function(all) {
+			return addAtom(all, 'S');
 		});
 		s = s.replace(methodsRegex, function(all) {
 			return addAtom(all, 'D');
@@ -1060,10 +1076,11 @@ module.exports = function parseProcessing(code, options) {
 		var declarations = body.substring(1, body.length - 1);
 		declarations = extractClassesAndMethods(declarations);
 		declarations = extractConstructors(declarations, name);
-		var methods = [], classes = [], cstrs = [], functions = [];
-		declarations = declarations.replace(/"([DEGH])(\d+)"/g, function(all, type, index) {
+		var methods = [], classes = [], structs = [], cstrs = [], functions = [];
+		declarations = declarations.replace(/"([DEGHS])(\d+)"/g, function(all, type, index) {
 			if(type === 'D') { methods.push(index); }
 			else if(type === 'E') { classes.push(index); }
+			else if(type === 'S') { structs.push(index); }
 			else if(type === 'H') { functions.push(index); }
 			else { cstrs.push(index); }
 			return "";
@@ -1102,6 +1119,55 @@ module.exports = function parseProcessing(code, options) {
 			classes, { tail: tail });
 	};
 
+	// wk_added
+	function AstStructBody(name, methods, fields, misc) {
+		this.name = name;
+		this.methods = methods;
+		this.fields = fields;
+		this.misc = misc;
+		for (v of fields) {
+			v.owner = this;
+		}
+	}
+
+	function AstStructBody.prototype.toString() {
+		let result = "";
+		for (field of this.fields) {
+			result += field.definitions.join(";\n");
+		}
+		result += trim(this.misc.tail);
+
+		return result;
+	}
+
+	transformStructBody = function(body, name) {
+		var methods = [], structs = []
+		let declarations = body.substring(1, body.length - 1);
+		declarations = extractClassesAndMethods(declarations);
+		declarations = extractConstructors(declarations, name);
+
+		declarations = declarations.replace(/"([DEGHS])(\d+)"/g, function(all, type, index) {
+			if (type === 'D') { methods.push(index); }
+			else if(type === 'S') { structs.push(index); }
+			return "";
+		});
+		var fields = declarations.replace(/^(?:\s*;)+/, "").split(/;(?:\s*;)*/g);
+		var i;
+
+		for(i = 0; i < methods.length; ++i) {
+			methods[i] = transformClassMethod(atoms[methods[i]]);
+		}
+
+		for(i = 0; i < fields.length - 1; ++i) {
+			var field = trimSpaces(fields[i]);
+			fields[i] = transformClassField(field.middle);
+		}
+		var tail = fields.pop();
+
+		return new AstStructBody(name, methods, fields, { tail: tail });
+	};
+
+
 	function AstInterface(name, body) {
 		this.name = name;
 		this.body = body;
@@ -1136,6 +1202,26 @@ module.exports = function parseProcessing(code, options) {
 		appendClass(globalClass, newClassId, oldClassId);
 		currentClassId = oldClassId;
 		return globalClass;
+	}
+
+	// wk_added
+	function AstStruct(name, body) {
+		this.name = name;
+		this.body = body;
+		body.owner = this;
+	}
+
+	AstStruct.prototype.toString = function() {
+		return "var " + this.name + " = " + this.body + ";\n" +
+			"$p." + this.name + " = " + this.name + ";\n";
+	};
+
+	function transformGlobalStruct(struct_) {
+		var m = structsRegex.exec(struct_); // 1 - attr, 2 - struct, 3 - name, 4 - body 
+		structsRegex.lastIndex = 0;
+		var body = atoms[getAtomIndex(m[4])];
+		globalStruct = new AstStruct(m[3], transformStructBody(body, m[3]));
+		return globalStruct;
 	}
 
 	function AstMethod(name, params, body) {
@@ -1213,7 +1299,7 @@ module.exports = function parseProcessing(code, options) {
 	};
 
 	transformStatements = function(statements, transformMethod, transformClass) {
-		var nextStatement = new RegExp(/\b(catch|for|if|switch|while|with)\s*"B(\d+)"|\b(do|else|finally|return|throw|try|break|continue)\b|("[ADEH](\d+)")|\b(case)\s+([^:]+):|\b([A-Za-z_$][\w$]*\s*:)|(;)/g);
+		var nextStatement = new RegExp(/\b(catch|for|if|switch|while|with)\s*"B(\d+)"|\b(do|else|finally|return|throw|try|break|continue)\b|("[ADEHS](\d+)")|\b(case)\s+([^:]+):|\b([A-Za-z_$][\w$]*\s*:)|(;)/g);
 		var res = [];
 		statements = preStatementsTransform(statements);
 		var lastIndex = 0, m, space;
@@ -1236,16 +1322,26 @@ module.exports = function parseProcessing(code, options) {
 			} else if(m[3] !== undefined) { // do, else, ...
 				res.push(new AstPrefixStatement(m[3], undefined,
 					{ prefix: statements.substring(lastIndex, nextStatement.lastIndex) }) );
-			} else if(m[4] !== undefined) { // block, class and methods
+			} else if (m[4] !== undefined) { // block, class and methods
 				space = statements.substring(lastIndex, nextStatement.lastIndex - m[4].length);
-				if(trim(space).length !== 0) { continue; } // avoiding new type[] {} construct
+				if (trim(space).length !== 0) { // avoiding new type[] {} construct
+					continue;
+				}
 				res.push(space);
-				var kind = m[4].charAt(1), atomIndex = m[5];
-				if(kind === 'D') {
+
+				const kind = m[4].charAt(1);
+				const atomIndex = m[5];
+
+				// wk_debug
+				console.log('atoms[atomIndex]:', atoms[atomIndex]);
+
+				if (kind === 'D') {
 					res.push(transformMethod(atoms[atomIndex]));
-				} else if(kind === 'E') {
+				} else if (kind === 'E') {
 					res.push(transformClass(atoms[atomIndex]));
-				} else if(kind === 'H') {
+				} else if (kind === 'S') { // wk_added
+					res.push(transformGlobalStruct(atoms[atomIndex]));
+				} else if (kind === 'H') {
 					res.push(transformFunction(atoms[atomIndex]));
 				} else {
 					res.push(transformStatementsBlock(atoms[atomIndex]));
@@ -1353,6 +1449,11 @@ module.exports = function parseProcessing(code, options) {
 
 	transformMain = function() {
 		var statements = extractClassesAndMethods(atoms[0]);
+
+		// wk_debug
+		console.log('debug(atoms[0]):', atoms[0]);
+		console.log('debug(statements):', statements);
+		
 		statements = statements.replace(/\bimport\s+[^;]+;/g, "");
 		return new AstRoot( transformStatements(statements,
 			transformGlobalMethod, transformGlobalClass) );

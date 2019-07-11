@@ -70,6 +70,10 @@ module.exports = function setupParser(Processing, options) {
 		var code = preprocessCode(pdeCode, sketch);
 		var compiledPde = parseProcessing(code, options);
 		sketch.sourceCode = compiledPde;
+
+		// wk_debug
+		//console.log('debug:', sketch.sourceCode);
+
 		return sketch;
 	};
 
